@@ -113,7 +113,6 @@ elif st.session_state.phase == "FINISHED":
     st.balloons()
     st.success("テストセッションが完了しました！")
 
-    # Googleフォームへ自動送信
     if "submitted" not in st.session_state:
         FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeeuvuH2cOpsxX_gGrzdocksTtfEYkh7DRa7-KFQPhyTP2gKQ/formResponse"
 
@@ -129,11 +128,20 @@ elif st.session_state.phase == "FINISHED":
         }
 
         try:
-            requests.post(FORM_URL, data=form_data, timeout=5)
-            st.session_state.submitted = True
-        except Exception:
-            st.session_state.submitted = False
+            # 診断用送信
+            res = requests.post(FORM_URL, data=form_data, timeout=10)
 
-    st.info(
-        "✅ Googleスプレッドシートへ送信されました。スプレッドシートを開いて新しい行が追加されているか確認してください。"
-    )
+            # 結果ステータスを表示
+            if res.status_code == 200:
+                st.success(
+                    "✅ Googleから「受付完了(200)」が返ってきました！スプレッドシートを確認してください。"
+                )
+                st.session_state.submitted = True
+            else:
+                st.error(
+                    f"❌ Google側で受信が拒否されました。ステータスコード: {res.status_code}"
+                )
+                with st.expander("詳細エラー内容を見る"):
+                    st.write(res.text[:600])
+        except Exception as e:
+            st.error(f"❌ 通信エラー: {e}")
