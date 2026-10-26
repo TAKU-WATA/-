@@ -13,7 +13,7 @@ st.set_page_config(
 # Google Apps ScriptのWebアプリURL
 GAS_URL = "https://script.google.com/macros/s/AKfycbzZhBUlm_MniZCLGkDiPblGx_VAsCahYGwJQNr_UI7yGUs-PixItMlBLl9d0HxfXsY4/exec"
 
-# 新しいターゲット4語 ＋ バッファー1語
+# ターゲット4語 ＋ バッファー1語
 TARGET_WORDS = [
     {"id": 1, "en": "billow", "ja": "大波"},
     {"id": 2, "en": "fracas", "ja": "大騒ぎ"},
@@ -35,37 +35,29 @@ def generate_schedule(group):
         random.shuffle(res)
         return res
 
-    if group == "全習群 (Whole)":
-        # Cycle 1: 初回提示 (4語一括)
+    if "全習群" in group:
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
-        # Cycle 2: 想起1回目
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
-        # Cycle 3: 想起2回目
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
-        # Cycle 4: 想起3回目
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
-        # Cycle 5: 想起4回目 (最終復習)
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 5, "label": "第5段階: 想起練習 4/4 (最終復習)"})
 
-    elif group == "分習・長間隔群 (Part-Long)":
-        # ブロック1 提示＆想起1回目
+    elif "長間隔" in group:
         for wid in shuffle_list(b1_ids):
             trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
         for wid in shuffle_list(b1_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
         
-        # ブロック2 提示＆想起1回目 (ブロック1との間に間隔を空ける)
         for wid in shuffle_list(b2_ids):
             trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
         for wid in shuffle_list(b2_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
 
-        # 想起2回目・3回目
         for wid in shuffle_list(b1_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
         for wid in shuffle_list(b1_ids):
@@ -76,12 +68,10 @@ def generate_schedule(group):
         for wid in shuffle_list(b2_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
 
-        # Cycle 5: 全体まとめ想起4回目 (最終復習)
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 5, "label": "第5段階: 想起練習 4/4 (最終復習)"})
 
-    elif group == "分習・短間隔群 (Control)":
-        # 2語ずつ「提示 → 想起1 → 想起2 → 想起3 → 想起4」を一気に完結
+    elif "短間隔" in group or "Control" in group:
         for b in [b1_ids, b2_ids]:
             for wid in shuffle_list(b):
                 trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
@@ -102,15 +92,39 @@ if "phase" not in st.session_state:
 
 st.title("語彙学習実験2 (5段階学習セッション)")
 
+# --- URLパラメータの自動判定 ---
+# 例: ?group=whole, ?group=part_long, ?group=control
+query_params = st.query_params
+url_group_param = query_params.get("group", "").lower()
+
+group_mapping = {
+    "whole": "全習群 (Whole)",
+    "part_long": "分習・長間隔群 (Part-Long)",
+    "control": "分習・短間隔群 (Control)",
+    "1": "全習群 (Whole)",
+    "2": "分習・長間隔群 (Part-Long)",
+    "3": "分習・短間隔群 (Control)"
+}
+assigned_group = group_mapping.get(url_group_param, None)
+
 # --- ステップ0: 参加登録 ---
 if st.session_state.phase == "START":
     st.markdown("### 実験への参加登録")
     st.info("計5回の学習サイクル（初回提示 ＋ 4回の想起練習）を行います。所要時間は約2〜3分です。")
+    
     name = st.text_input("学籍番号 または お名前:")
-    group = st.selectbox(
-        "指定された実験グループを選択してください:",
-        ["全習群 (Whole)", "分習・長間隔群 (Part-Long)", "分習・短間隔群 (Control)"]
-    )
+
+    # URLでグループが指定されている場合は自動確定（選択肢を出さない）
+    if assigned_group:
+        group = assigned_group
+        st.success(f"あなたの割り当てグループ: **{group}**（自動設定済み）")
+    else:
+        # URLに指定がない場合のみプルダウンで選択
+        group = st.selectbox(
+            "指定された実験グループを選択してください:",
+            ["全習群 (Whole)", "分習・長間隔群 (Part-Long)", "分習・短間隔群 (Control)"]
+        )
+
     if st.button("学習セッションを開始する"):
         if name:
             st.session_state.user_name = name
@@ -232,4 +246,4 @@ elif st.session_state.phase == "FINISHED":
             st.session_state.submitted = False
 
     st.markdown(f"### あなたの想起スコア内訳:\n**{score_summary}**")
-    st.info("✅ データは自動でスプレッドシートに保存されました。")
+    st.info("✅ データは自動でスプレッドシートに保存されました。続けて直後テスト用のGoogleフォームに進んでください。")
