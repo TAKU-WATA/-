@@ -26,9 +26,9 @@ WORD_DICT = {w["id"]: w for w in TARGET_WORDS + [FILLER_WORD]}
 # --- 5サイクル学習スケジュール生成 ---
 def generate_schedule(group):
     trials = []
-    w_ids =
-    b1_ids =
-    b2_ids =
+    w_ids = [1, 2, 3, 4]       # 全体4語
+    b1_ids = [1, 2]            # ブロック1 (2語)
+    b2_ids = [3, 4]            # ブロック2 (2語)
 
     def shuffle_list(lst):
         res = list(lst)
@@ -36,28 +36,36 @@ def generate_schedule(group):
         return res
 
     if group == "全習群 (Whole)":
+        # Cycle 1: 初回提示 (4語一括)
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
+        # Cycle 2: 想起1回目
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
+        # Cycle 3: 想起2回目
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
+        # Cycle 4: 想起3回目
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
+        # Cycle 5: 想起4回目 (最終復習)
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 5, "label": "第5段階: 想起練習 4/4 (最終復習)"})
 
     elif group == "分習・長間隔群 (Part-Long)":
+        # ブロック1 提示＆想起1回目
         for wid in shuffle_list(b1_ids):
             trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
         for wid in shuffle_list(b1_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
         
+        # ブロック2 提示＆想起1回目 (ブロック1との間に間隔を空ける)
         for wid in shuffle_list(b2_ids):
             trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
         for wid in shuffle_list(b2_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
 
+        # 想起2回目・3回目
         for wid in shuffle_list(b1_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
         for wid in shuffle_list(b1_ids):
@@ -68,10 +76,12 @@ def generate_schedule(group):
         for wid in shuffle_list(b2_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
 
+        # Cycle 5: 全体まとめ想起4回目 (最終復習)
         for wid in shuffle_list(w_ids):
             trials.append({"id": wid, "type": "PROD", "cycle": 5, "label": "第5段階: 想起練習 4/4 (最終復習)"})
 
     elif group == "分習・短間隔群 (Control)":
+        # 2語ずつ「提示 → 想起1 → 想起2 → 想起3 → 想起4」を一気に完結
         for b in [b1_ids, b2_ids]:
             for wid in shuffle_list(b):
                 trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
