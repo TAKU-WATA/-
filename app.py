@@ -6,57 +6,79 @@ import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="語彙学習実験 (ゼミ短縮版)",
+    page_title="語彙学習実験2 (5サイクル本格版)",
     layout="centered"
 )
 
 # Google Apps ScriptのWebアプリURL
 GAS_URL = "https://script.google.com/macros/s/AKfycbzZhBUlm_MniZCLGkDiPblGx_VAsCahYGwJQNr_UI7yGUs-PixItMlBLl9d0HxfXsY4/exec"
 
-# 実験2から抜粋したターゲット4語 ＋ バッファー1語
+# 新しいターゲット4語 ＋ バッファー1語
 TARGET_WORDS = [
-    {"id": 1, "en": "apparition", "ja": "亡霊"},
-    {"id": 2, "en": "citadel", "ja": "要塞"},
-    {"id": 3, "en": "mane", "ja": "たてがみ"},
-    {"id": 4, "en": "scowl", "ja": "にらみつける"},
+    {"id": 1, "en": "billow", "ja": "大波"},
+    {"id": 2, "en": "fracas", "ja": "大騒ぎ"},
+    {"id": 3, "en": "loach", "ja": "ドジョウ"},
+    {"id": 4, "en": "toupee", "ja": "かつら"},
 ]
-FILLER_WORD = {"id": 99, "en": "urn", "ja": "骨壺"}
+FILLER_WORD = {"id": 99, "en": "vestige", "ja": "面影"}
 WORD_DICT = {w["id"]: w for w in TARGET_WORDS + [FILLER_WORD]}
 
-# --- 1分版スケジュール生成 (3群の構造を再現) ---
+# --- 5サイクル学習スケジュール生成 ---
 def generate_schedule(group):
     trials = []
-    
+    w_ids =
+    b1_ids =
+    b2_ids =
+
+    def shuffle_list(lst):
+        res = list(lst)
+        random.shuffle(res)
+        return res
+
     if group == "全習群 (Whole)":
-        w_ids = [1, 2, 3, 4]
-        for wid in sorted(w_ids, key=lambda _: random.random()):
-            trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
-        for wid in sorted(w_ids, key=lambda _: random.random()):
-            trials.append({"id": wid, "type": "PROD", "label": "想起練習 1/2"})
-        for wid in sorted(w_ids, key=lambda _: random.random()):
-            trials.append({"id": wid, "type": "PROD", "label": "想起練習 2/2"})
-            
+        for wid in shuffle_list(w_ids):
+            trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
+        for wid in shuffle_list(w_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
+        for wid in shuffle_list(w_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
+        for wid in shuffle_list(w_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
+        for wid in shuffle_list(w_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 5, "label": "第5段階: 想起練習 4/4 (最終復習)"})
+
     elif group == "分習・長間隔群 (Part-Long)":
-        for wid in [1, 2]:
-            trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
-        for wid in [3, 4]:
-            trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
-        for wid in [1, 2]:
-            trials.append({"id": wid, "type": "PROD", "label": "想起練習 1/2"})
-        for wid in [3, 4]:
-            trials.append({"id": wid, "type": "PROD", "label": "想起練習 1/2"})
-        for wid in sorted([1, 2, 3, 4], key=lambda _: random.random()):
-            trials.append({"id": wid, "type": "PROD", "label": "想起練習 2/2"})
+        for wid in shuffle_list(b1_ids):
+            trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
+        for wid in shuffle_list(b1_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
+        
+        for wid in shuffle_list(b2_ids):
+            trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
+        for wid in shuffle_list(b2_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
+
+        for wid in shuffle_list(b1_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
+        for wid in shuffle_list(b1_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
             
+        for wid in shuffle_list(b2_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
+        for wid in shuffle_list(b2_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
+
+        for wid in shuffle_list(w_ids):
+            trials.append({"id": wid, "type": "PROD", "cycle": 5, "label": "第5段階: 想起練習 4/4 (最終復習)"})
+
     elif group == "分習・短間隔群 (Control)":
-        for b in [[1, 2], [3, 4]]:
-            for wid in b:
-                trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
-            for wid in b:
-                trials.append({"id": wid, "type": "PROD", "label": "想起練習 1/2"})
-            for wid in b:
-                trials.append({"id": wid, "type": "PROD", "label": "想起練習 2/2"})
-                
+        for b in [b1_ids, b2_ids]:
+            for wid in shuffle_list(b):
+                trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
+            for c in range(2, 6):
+                for wid in shuffle_list(b):
+                    trials.append({"id": wid, "type": "PROD", "cycle": c, "label": f"第{c}段階: 想起練習 {c-1}/4"})
+
     return trials
 
 # --- セッション初期化 ---
@@ -68,17 +90,18 @@ if "phase" not in st.session_state:
     st.session_state.user_name = ""
     st.session_state.group = ""
 
-st.title("語彙学習実験 (約1分)")
+st.title("語彙学習実験2 (5段階学習セッション)")
 
 # --- ステップ0: 参加登録 ---
 if st.session_state.phase == "START":
-    st.info("約1分間で終了する短い英単語学習実験です。")
+    st.markdown("### 実験への参加登録")
+    st.info("計5回の学習サイクル（初回提示 ＋ 4回の想起練習）を行います。所要時間は約2〜3分です。")
     name = st.text_input("学籍番号 または お名前:")
     group = st.selectbox(
         "指定された実験グループを選択してください:",
         ["全習群 (Whole)", "分習・長間隔群 (Part-Long)", "分習・短間隔群 (Control)"]
     )
-    if st.button("実験を開始する"):
+    if st.button("学習セッションを開始する"):
         if name:
             st.session_state.user_name = name
             st.session_state.group = group
@@ -97,13 +120,14 @@ elif st.session_state.phase == "RUN_TRIAL":
     cur = st.session_state.schedule[idx]
     word = WORD_DICT[cur["id"]]
 
-    st.caption(f"進捗: {idx + 1} / {total} ｜ グループ: {st.session_state.group}")
+    st.caption(f"全体進捗: {idx + 1} / {total} 試行 ｜ グループ: {st.session_state.group}")
 
     # 初回提示 (4秒)
     if cur["type"] == "PRES":
-        st.subheader(f"【{cur['label']}】単語を覚えてください")
+        st.subheader(f"【{cur['label']}】単語の学習")
         st.markdown(f"## 英単語: **`{word['en']}`**")
         st.markdown(f"## 日本語訳: **`{word['ja']}`**")
+        st.info("英単語と日本語訳の組み合わせを覚えてください。")
         
         bar = st.progress(1.0)
         for i in range(40, 0, -1):
@@ -133,6 +157,7 @@ elif st.session_state.phase == "RUN_TRIAL":
 
                 st.session_state.logs.append({
                     "trial_num": idx + 1,
+                    "cycle": cur["cycle"],
                     "word_id": word["id"],
                     "word_en": word["en"],
                     "word_ja": word["ja"],
@@ -170,15 +195,18 @@ elif st.session_state.phase == "FEEDBACK":
         st.session_state.phase = "FINISHED"
         st.rerun()
 
-# --- ステップ3: 完了 ＆ スプレッドシートへ自動保存 ---
+# --- ステップ3: 完了 ＆ スプレッドシート自動保存 ---
 elif st.session_state.phase == "FINISHED":
     st.balloons()
-    st.success("すべての実験が完了しました！ご協力ありがとうございました。")
+    st.success("すべての学習セッションが完了しました！お疲れ様でした。")
 
-    # 正答数の集計
-    total_trials = len(st.session_state.logs)
-    correct_count = sum(1 for log in st.session_state.logs if log.get("is_correct", False))
-    score_summary = f"{correct_count} / {total_trials} 正解"
+    c2_cor = sum(1 for log in st.session_state.logs if log.get("cycle") == 2 and log.get("is_correct"))
+    c3_cor = sum(1 for log in st.session_state.logs if log.get("cycle") == 3 and log.get("is_correct"))
+    c4_cor = sum(1 for log in st.session_state.logs if log.get("cycle") == 4 and log.get("is_correct"))
+    c5_cor = sum(1 for log in st.session_state.logs if log.get("cycle") == 5 and log.get("is_correct"))
+    total_cor = sum(1 for log in st.session_state.logs if log.get("is_correct"))
+    
+    score_summary = f"総計:{total_cor}/16 (想起1:{c2_cor}/4, 想起2:{c3_cor}/4, 想起3:{c4_cor}/4, 想起4:{c5_cor}/4)"
 
     if "submitted" not in st.session_state:
         payload = {
@@ -188,10 +216,10 @@ elif st.session_state.phase == "FINISHED":
             "raw_data": json.dumps(st.session_state.logs, ensure_ascii=False)
         }
         try:
-            res = requests.post(GAS_URL, json=payload, timeout=10)
+            requests.post(GAS_URL, json=payload, timeout=10)
             st.session_state.submitted = True
         except Exception:
             st.session_state.submitted = False
 
-    st.markdown(f"### あなたの想起スコア: **{score_summary}**")
-    st.info("✅ 回答データとスコアがスプレッドシートに送信されました。このブラウザタブは閉じていただいて構いません。")
+    st.markdown(f"### あなたの想起スコア内訳:\n**{score_summary}**")
+    st.info("✅ データは自動でスプレッドシートに保存されました。")
