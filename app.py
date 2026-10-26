@@ -10,7 +10,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# 先ほど発行されたGoogle Apps ScriptのURL
+# Google Apps ScriptのWebアプリURL
 GAS_URL = "https://script.google.com/macros/s/AKfycbzZhBUlm_MniZCLGkDiPblGx_VAsCahYGwJQNr_UI7yGUs-PixItMlBLl9d0HxfXsY4/exec"
 
 # 実験2から抜粋したターゲット4語 ＋ バッファー1語
@@ -28,7 +28,6 @@ def generate_schedule(group):
     trials = []
     
     if group == "全習群 (Whole)":
-        # 4語まとめて提示 → 4語まとめて想起1回目 → 4語まとめて想起2回目 (長間隔)
         w_ids = [1, 2, 3, 4]
         for wid in sorted(w_ids, key=lambda _: random.random()):
             trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
@@ -38,25 +37,18 @@ def generate_schedule(group):
             trials.append({"id": wid, "type": "PROD", "label": "想起練習 2/2"})
             
     elif group == "分習・長間隔群 (Part-Long)":
-        # 2語ずつ提示・想起するが、間に別ブロックを挟んで復習間隔を空ける
-        # ブロック1提示
         for wid in [1, 2]:
             trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
-        # ブロック2提示
         for wid in [3, 4]:
             trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
-        # ブロック1想起1回目
         for wid in [1, 2]:
             trials.append({"id": wid, "type": "PROD", "label": "想起練習 1/2"})
-        # ブロック2想起1回目
         for wid in [3, 4]:
             trials.append({"id": wid, "type": "PROD", "label": "想起練習 1/2"})
-        # 全体まとめ想起2回目
         for wid in sorted([1, 2, 3, 4], key=lambda _: random.random()):
             trials.append({"id": wid, "type": "PROD", "label": "想起練習 2/2"})
             
     elif group == "分習・短間隔群 (Control)":
-        # 2語ごとに「提示 → 想起1 → 想起2」を連続で完結させる (短間隔・集中学習)
         for b in [[1, 2], [3, 4]]:
             for wid in b:
                 trials.append({"id": wid, "type": "PRES", "label": "初回提示 (4秒)"})
@@ -92,6 +84,7 @@ if st.session_state.phase == "START":
             st.session_state.group = group
             st.session_state.schedule = generate_schedule(group)
             st.session_state.trial_idx = 0
+            st.session_state.logs = []
             st.session_state.phase = "RUN_TRIAL"
             st.rerun()
         else:
@@ -106,7 +99,7 @@ elif st.session_state.phase == "RUN_TRIAL":
 
     st.caption(f"進捗: {idx + 1} / {total} ｜ グループ: {st.session_state.group}")
 
-    # 初回提示 (テンポよく4秒)
+    # 初回提示 (4秒)
     if cur["type"] == "PRES":
         st.subheader(f"【{cur['label']}】単語を覚えてください")
         st.markdown(f"## 英単語: **`{word['en']}`**")
@@ -139,8 +132,6 @@ elif st.session_state.phase == "RUN_TRIAL":
                 st.session_state.last_correct = is_correct
 
                 st.session_state.logs.append({
-                    "participant": st.session_state.user_name,
-                    "group": st.session_state.group,
                     "trial_num": idx + 1,
                     "word_id": word["id"],
                     "word_en": word["en"],
@@ -166,7 +157,6 @@ elif st.session_state.phase == "FEEDBACK":
         st.error(f"❌ 不正解... 正解は **`{word['en']}`** でした")
     st.info(f"日本語訳: **`{word['ja']}`** ｜ あなたの入力: **`{st.session_state.last_ans}`**")
 
-    # 2秒タイマー
     bar = st.progress(1.0)
     for i in range(20, 0, -1):
         time.sleep(0.1)
@@ -185,17 +175,23 @@ elif st.session_state.phase == "FINISHED":
     st.balloons()
     st.success("すべての実験が完了しました！ご協力ありがとうございました。")
 
+    # 正答数の集計
+    total_trials = len(st.session_state.logs)
+    correct_count = sum(1 for log in st.session_state.logs if log.get("is_correct", False))
+    score_summary = f"{correct_count} / {total_trials} 正解"
+
     if "submitted" not in st.session_state:
         payload = {
-            "participant": st.session_state.user_name,
-            "group": st.session_state.group,
-            "summary": f"短縮本番完了 ({len(st.session_state.logs)}試行)",
+            "participant": str(st.session_state.user_name),
+            "group": str(st.session_state.group),
+            "summary": score_summary,
             "raw_data": json.dumps(st.session_state.logs, ensure_ascii=False)
         }
         try:
-            requests.post(GAS_URL, json=payload, timeout=10)
+            res = requests.post(GAS_URL, json=payload, timeout=10)
             st.session_state.submitted = True
         except Exception:
             st.session_state.submitted = False
 
-    st.info("✅ 回答データは自動でスプレッドシートに送信されました。このブラウザタブは閉じていただいて構いません。")
+    st.markdown(f"### あなたの想起スコア: **{score_summary}**")
+    st.info("✅ 回答データとスコアがスプレッドシートに送信されました。このブラウザタブは閉じていただいて構いません。")
