@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+import time
 
 # ==========================================
 # ページ基本設定
@@ -103,14 +104,13 @@ if st.session_state.step == "login":
             st.rerun()
 
 # ==========================================
-# 画面2: 4択学習セッション
+# 画面2: 学習セッション (初回4秒提示 ➔ 4択復習)
 # ==========================================
 elif st.session_state.step == "study":
     # グループごとのリスト管理（全習：12語全一括 / 分習：4語×3ブロック）
     if st.session_state.group == "whole":
         current_words = WORDS
     else:  # part_long or control
-        # 4語ずつ3ブロックに分割
         b = st.session_state.block
         if b == 1:
             current_words = WORDS[0:4]
@@ -129,52 +129,80 @@ elif st.session_state.step == "study":
     st.progress(min(progress_val, 1.0))
 
     st.markdown("---")
-    st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
-    st.write("対応するスワヒリ語を以下から1つ選んでください：")
 
-    # 4択ボタンの配置
-    cols = st.columns(2)
-    for i, choice in enumerate(st.session_state.choices):
-        col = cols[i % 2]
-        if col.button(f"**{choice}**", key=f"choice_{i}", use_container_width=True):
-            if choice == word_obj["sw"]:
-                st.session_state.feedback = ("correct", f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
-            else:
-                st.session_state.feedback = ("incorrect", f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
+    # --------------------------------------------------
+    # 【サイクル 1】：初回提示（4秒間の自動表示）
+    # --------------------------------------------------
+    if st.session_state.cycle == 1:
+        st.info("💡 【初回提示】単語ペアが4秒間表示されます。しっかり覚えてください（自動で切り替わります）。")
+        
+        st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
+        st.markdown(f"### スワヒリ語: **【 {word_obj['sw']} 】**")
+        st.write("")
 
-    # フィードバック表示と次への遷移
-    if st.session_state.feedback is not None:
-        status, msg = st.session_state.feedback
-        if status == "correct":
-            st.success(msg)
+        # 4秒間だけ画面を表示して自動で次へ遷移
+        time.sleep(4)
+
+        if idx + 1 < total_in_block:
+            st.session_state.current_index += 1
         else:
-            st.error(msg)
+            # サイクル1完了 ➔ サイクル2（4択テスト）へ移行
+            st.session_state.current_index = 0
+            st.session_state.cycle += 1
+            next_word = current_words[0]
+            st.session_state.choices = get_choices(next_word["sw"])
+        st.rerun()
 
-        if st.button("次の問題へ ➔", type="primary"):
-            st.session_state.feedback = None
-            
-            # 次の単語・サイクルの更新ロジック
-            if idx + 1 < total_in_block:
-                st.session_state.current_index += 1
-            else:
-                # ブロック内の単語が一巡完了
-                st.session_state.current_index = 0
-                if st.session_state.cycle < 5:
-                    st.session_state.cycle += 1
+    # --------------------------------------------------
+    # 【サイクル 2〜5】：4択復習テストフェーズ
+    # --------------------------------------------------
+    else:
+        st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
+        st.write("対応するスワヒリ語を以下から1つ選んでください：")
+
+        # 4択ボタンの配置
+        cols = st.columns(2)
+        for i, choice in enumerate(st.session_state.choices):
+            col = cols[i % 2]
+            if col.button(f"**{choice}**", key=f"choice_{i}", use_container_width=True):
+                if choice == word_obj["sw"]:
+                    st.session_state.feedback = ("correct", f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
                 else:
-                    # 5サイクル完了
-                    st.session_state.cycle = 1
-                    if st.session_state.group != "whole" and st.session_state.block < 3:
-                        st.session_state.block += 1
+                    st.session_state.feedback = ("incorrect", f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
+
+        # フィードバック表示と次への遷移
+        if st.session_state.feedback is not None:
+            status, msg = st.session_state.feedback
+            if status == "correct":
+                st.success(msg)
+            else:
+                st.error(msg)
+
+            if st.button("次の問題へ ➔", type="primary"):
+                st.session_state.feedback = None
+                
+                # 次の単語・サイクルの更新ロジック
+                if idx + 1 < total_in_block:
+                    st.session_state.current_index += 1
+                else:
+                    # ブロック内の単語が一巡完了
+                    st.session_state.current_index = 0
+                    if st.session_state.cycle < 5:
+                        st.session_state.cycle += 1
                     else:
-                        # 全学習セッション終了
-                        st.session_state.step = "finished"
-            
-            # 次の問題用の選択肢を用意してリロード
-            if st.session_state.step == "study":
-                next_word = current_words[st.session_state.current_index]
-                st.session_state.choices = get_choices(next_word["sw"])
-            st.rerun()
+                        # 5サイクル完了
+                        st.session_state.cycle = 1
+                        if st.session_state.group != "whole" and st.session_state.block < 3:
+                            st.session_state.block += 1
+                        else:
+                            # 全学習セッション終了
+                            st.session_state.step = "finished"
+                
+                # 次の問題用の選択肢を用意してリロード
+                if st.session_state.step == "study":
+                    next_word = current_words[st.session_state.current_index]
+                    st.session_state.choices = get_choices(next_word["sw"])
+                st.rerun()
 
 # ==========================================
 # 画面3: 学習完了
