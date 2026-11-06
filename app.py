@@ -1,260 +1,186 @@
-import json
-import random
-import time
-import pandas as pd
-import requests
 import streamlit as st
+import random
 
+# ==========================================
+# ページ基本設定
+# ==========================================
 st.set_page_config(
-    page_title="語彙学習実験2 (スワヒリ語本格版)",
+    page_title="語彙学習実験アプリ（スワヒリ語・4択版）",
+    page_icon="🔤",
     layout="centered"
 )
 
-# Google Apps ScriptのWebアプリURL
-GAS_URL = "https://script.google.com/macros/s/AKfycbzZhBUlm_MniZCLGkDiPblGx_VAsCahYGwJQNr_UI7yGUs-PixItMlBLl9d0HxfXsY4/exec"
-
-# --- スワヒリ語 単語リスト（20語 ＋ バッファー3語） ---
-TARGET_WORDS = [
-    # ブロック1
-    {"id": 1, "en": "adui", "ja": "敵"},
-    {"id": 2, "en": "farasi", "ja": "馬"},
-    {"id": 3, "en": "ziwa", "ja": "湖"},
-    {"id": 4, "en": "ndege", "ja": "鳥"},
-    # ブロック2
-    {"id": 5, "en": "simba", "ja": "ライオン"},
-    {"id": 6, "en": "samaki", "ja": "魚"},
-    {"id": 7, "en": "nyumba", "ja": "家"},
-    {"id": 8, "en": "moto", "ja": "火"},
-    # ブロック3
-    {"id": 9, "en": "kitabu", "ja": "本"},
-    {"id": 10, "en": "meza", "ja": "机"},
-    {"id": 11, "en": "kisu", "ja": "ナイフ"},
-    {"id": 12, "en": "chumvi", "ja": "塩"},
-    # ブロック4
-    {"id": 13, "en": "dawa", "ja": "薬"},
-    {"id": 14, "en": "maji", "ja": "水"},
-    {"id": 15, "en": "safari", "ja": "旅"},
-    {"id": 16, "en": "ndizi", "ja": "バナナ"},
-    # ブロック5
-    {"id": 17, "en": "nguo", "ja": "服"},
-    {"id": 18, "en": "mwezi", "ja": "月"},
-    {"id": 19, "en": "pepo", "ja": "風"},
-    {"id": 20, "en": "sahani", "ja": "皿"},
+# ==========================================
+# 単語データ（ターゲット10語 ＋ ダミー2語 ＝ 計12語）
+# ==========================================
+WORDS = [
+    {"ja": "心", "sw": "moyo", "is_buffer": True},       # 初頭バッファー語
+    {"ja": "敵", "sw": "adui", "is_buffer": False},      # ターゲット語 1
+    {"ja": "馬", "sw": "farasi", "is_buffer": False},    # ターゲット語 2
+    {"ja": "湖", "sw": "ziwa", "is_buffer": False},      # ターゲット語 3
+    {"ja": "鳥", "sw": "ndege", "is_buffer": False},     # ターゲット語 4
+    {"ja": "ライオン", "sw": "simba", "is_buffer": False},# ターゲット語 5
+    {"ja": "魚", "sw": "samaki", "is_buffer": False},   # ターゲット語 6
+    {"ja": "家", "sw": "nyumba", "is_buffer": False},   # ターゲット語 7
+    {"ja": "火", "sw": "moto", "is_buffer": False},     # ターゲット語 8
+    {"ja": "本", "sw": "kitabu", "is_buffer": False},   # ターゲット語 9
+    {"ja": "机", "sw": "meza", "is_buffer": False},     # ターゲット語 10
+    {"ja": "頭", "sw": "kichwa", "is_buffer": True}      # 終末バッファー語
 ]
 
-BUFFER_WORDS = [
-    {"id": 21, "en": "moyo", "ja": "心"},
-    {"id": 22, "en": "kichwa", "ja": "頭"},
-    {"id": 23, "en": "kalamu", "ja": "ペン"},
-]
+ALL_SWAHILI = [w["sw"] for w in WORDS]
 
-WORD_DICT = {w["id"]: w for w in TARGET_WORDS + BUFFER_WORDS}
+# 4択の選択肢を生成する関数
+def get_choices(correct_sw):
+    distractors = [sw for sw in ALL_SWAHILI if sw != correct_sw]
+    wrong_choices = random.sample(distractors, 3)
+    choices = wrong_choices + [correct_sw]
+    random.shuffle(choices)
+    return choices
 
-# --- 5サイクル学習スケジュール生成 ---
-def generate_schedule(group):
-    trials = []
-    w_ids = [w["id"] for w in TARGET_WORDS]
-    blocks = [
-        [1, 2, 3, 4],
-        [5, 6, 7, 8],
-        [9, 10, 11, 12],
-        [13, 14, 15, 16],
-        [17, 18, 19, 20]
-    ]
-
-    def shuffle_list(lst):
-        res = list(lst)
-        random.shuffle(res)
-        return res
-
-    if "全習群" in group:
-        for wid in shuffle_list(w_ids):
-            trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
-        for c in range(2, 6):
-            for wid in shuffle_list(w_ids):
-                trials.append({"id": wid, "type": "PROD", "cycle": c, "label": f"第{c}段階: 想起練習 {c-1}/4"})
-
-    elif "長間隔" in group:
-        # 各ブロックの提示＋第1回復習
-        for b in blocks:
-            for wid in shuffle_list(b):
-                trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
-            for wid in shuffle_list(b):
-                trials.append({"id": wid, "type": "PROD", "cycle": 2, "label": "第2段階: 想起練習 1/4"})
-        
-        # 間隔を空けてからの第2・3回復習
-        for b in blocks:
-            for wid in shuffle_list(b):
-                trials.append({"id": wid, "type": "PROD", "cycle": 3, "label": "第3段階: 想起練習 2/4"})
-            for wid in shuffle_list(b):
-                trials.append({"id": wid, "type": "PROD", "cycle": 4, "label": "第4段階: 想起練習 3/4"})
-
-        # 最終全シャッフル復習
-        for wid in shuffle_list(w_ids):
-            trials.append({"id": wid, "type": "PROD", "cycle": 5, "label": "第5段階: 想起練習 4/4 (最終復習)"})
-
-    elif "短間隔" in group or "Control" in group:
-        for b in blocks:
-            for wid in shuffle_list(b):
-                trials.append({"id": wid, "type": "PRES", "cycle": 1, "label": "第1段階: 初回提示 (4秒)"})
-            for c in range(2, 6):
-                for wid in shuffle_list(b):
-                    trials.append({"id": wid, "type": "PROD", "cycle": c, "label": f"第{c}段階: 想起練習 {c-1}/4"})
-
-    return trials
-
-# --- セッション初期化 ---
-if "phase" not in st.session_state:
-    st.session_state.phase = "START"
-    st.session_state.trial_idx = 0
-    st.session_state.schedule = []
-    st.session_state.logs = []
-    st.session_state.user_name = ""
+# ==========================================
+# セッション状態の初期化
+# ==========================================
+if "step" not in st.session_state:
+    st.session_state.step = "login"  # login -> study -> finished
+if "student_id" not in st.session_state:
+    st.session_state.student_id = ""
+if "group" not in st.session_state:
     st.session_state.group = ""
+if "current_index" not in st.session_state:
+    st.session_state.current_index = 0
+if "cycle" not in st.session_state:
+    st.session_state.cycle = 1
+if "block" not in st.session_state:
+    st.session_state.block = 1
+if "choices" not in st.session_state:
+    st.session_state.choices = []
+if "feedback" not in st.session_state:
+    st.session_state.feedback = None
 
-st.title("語彙学習実験2 (スワヒリ語セッション)")
-
+# URLクエリパラメータからグループを判別
 query_params = st.query_params
-url_group_param = query_params.get("group", "").lower()
+url_group = query_params.get("group", None)
 
-group_mapping = {
-    "whole": "全習群 (Whole)",
-    "part_long": "分習・長間隔群 (Part-Long)",
-    "control": "分習・短間隔群 (Control)",
-    "1": "全習群 (Whole)",
-    "2": "分習・長間隔群 (Part-Long)",
-    "3": "分習・短間隔群 (Control)"
-}
-assigned_group = group_mapping.get(url_group_param, None)
+# ==========================================
+# 画面1: ログイン & グループ選択
+# ==========================================
+if st.session_state.step == "login":
+    st.title("🔤 スワヒリ語 語彙学習セッション")
+    st.write("画面の指示に従って、日本語に対応するスワヒリ語の意味を学習してください。")
 
-# --- ステップ0: 参加登録 ---
-if st.session_state.phase == "START":
-    st.markdown("### 実験への参加登録")
-    st.info("スワヒリ語20単語の学習（初回提示 ＋ 4回のタイピング練習）を行います。所要時間は約15分です。")
+    st.subheader("基本情報の入力")
+    st.session_state.student_id = st.text_input("学籍番号 または お名前", value=st.session_state.student_id)
+
+    # URL引数があれば自動選択、無ければ手動選択
+    group_options = {
+        "whole": "全習群 (Whole)",
+        "part_long": "分習・長間隔群 (Part-Long)",
+        "control": "分習・短間隔群 (Control)"
+    }
     
-    name = st.text_input("学籍番号 または お名前:")
+    default_index = 0
+    if url_group in group_options:
+        default_index = list(group_options.keys()).index(url_group)
 
-    if assigned_group:
-        group = assigned_group
-        st.success(f"あなたの割り当てグループ: **{group}**（自動設定済み）")
-    else:
-        group = st.selectbox(
-            "指定された実験グループを選択してください:",
-            ["全習群 (Whole)", "分習・長間隔群 (Part-Long)", "分習・短間隔群 (Control)"]
-        )
+    selected_group_key = st.selectbox(
+        "参加グループを選んでください",
+        options=list(group_options.keys()),
+        format_func=lambda x: group_options[x],
+        index=default_index
+    )
+    st.session_state.group = selected_group_key
 
-    if st.button("学習セッションを開始する"):
-        if name:
-            st.session_state.user_name = name
-            st.session_state.group = group
-            st.session_state.schedule = generate_schedule(group)
-            st.session_state.trial_idx = 0
-            st.session_state.logs = []
-            st.session_state.phase = "RUN_TRIAL"
-            st.rerun()
+    if st.button("学習を開始する", type="primary"):
+        if not st.session_state.student_id.strip():
+            st.warning("学籍番号またはお名前を入力してください。")
         else:
-            st.warning("お名前または学籍番号を入力してください。")
-
-# --- ステップ1: 各試行の実行 ---
-elif st.session_state.phase == "RUN_TRIAL":
-    idx = st.session_state.trial_idx
-    total = len(st.session_state.schedule)
-    cur = st.session_state.schedule[idx]
-    word = WORD_DICT[cur["id"]]
-
-    st.caption(f"全体進捗: {idx + 1} / {total} 試行 ｜ グループ: {st.session_state.group}")
-
-    if cur["type"] == "PRES":
-        st.subheader(f"【{cur['label']}】単語の学習")
-        st.markdown(f"## スワヒリ語: **`{word['en']}`**")
-        st.markdown(f"## 日本語訳: **`{word['ja']}`**")
-        st.info("単語と日本語訳の組み合わせを覚えてください。")
-        
-        bar = st.progress(1.0)
-        for i in range(40, 0, -1):
-            time.sleep(0.1)
-            bar.progress(i / 40.0)
-
-        if idx + 1 < total:
-            st.session_state.trial_idx += 1
+            st.session_state.step = "study"
+            st.session_state.current_index = 0
+            st.session_state.cycle = 1
+            st.session_state.block = 1
+            st.session_state.choices = get_choices(WORDS[0]["sw"])
             st.rerun()
+
+# ==========================================
+# 画面2: 4択学習セッション
+# ==========================================
+elif st.session_state.step == "study":
+    # グループごとのリスト管理（全習：12語全一括 / 分習：4語×3ブロック）
+    if st.session_state.group == "whole":
+        current_words = WORDS
+    else:  # part_long or control
+        # 4語ずつ3ブロックに分割
+        b = st.session_state.block
+        if b == 1:
+            current_words = WORDS[0:4]
+        elif b == 2:
+            current_words = WORDS[4:8]
         else:
-            st.session_state.phase = "FINISHED"
+            current_words = WORDS[8:12]
+
+    total_in_block = len(current_words)
+    idx = st.session_state.current_index
+    word_obj = current_words[idx]
+
+    # プログレスバー表示
+    st.caption(f"グループ: {st.session_state.group.upper()} | ブロック {st.session_state.block}/3 | サイクル {st.session_state.cycle}/5")
+    progress_val = ((st.session_state.cycle - 1) * total_in_block + idx) / (5 * total_in_block)
+    st.progress(min(progress_val, 1.0))
+
+    st.markdown("---")
+    st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
+    st.write("対応するスワヒリ語を以下から1つ選んでください：")
+
+    # 4択ボタンの配置
+    cols = st.columns(2)
+    for i, choice in enumerate(st.session_state.choices):
+        col = cols[i % 2]
+        if col.button(f"**{choice}**", key=f"choice_{i}", use_container_width=True):
+            if choice == word_obj["sw"]:
+                st.session_state.feedback = ("correct", f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
+            else:
+                st.session_state.feedback = ("incorrect", f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
+
+    # フィードバック表示と次への遷移
+    if st.session_state.feedback is not None:
+        status, msg = st.session_state.feedback
+        if status == "correct":
+            st.success(msg)
+        else:
+            st.error(msg)
+
+        if st.button("次の問題へ ➔", type="primary"):
+            st.session_state.feedback = None
+            
+            # 次の単語・サイクルの更新ロジック
+            if idx + 1 < total_in_block:
+                st.session_state.current_index += 1
+            else:
+                # ブロック内の単語が一巡完了
+                st.session_state.current_index = 0
+                if st.session_state.cycle < 5:
+                    st.session_state.cycle += 1
+                else:
+                    # 5サイクル完了
+                    st.session_state.cycle = 1
+                    if st.session_state.group != "whole" and st.session_state.block < 3:
+                        st.session_state.block += 1
+                    else:
+                        # 全学習セッション終了
+                        st.session_state.step = "finished"
+            
+            # 次の問題用の選択肢を用意してリロード
+            if st.session_state.step == "study":
+                next_word = current_words[st.session_state.current_index]
+                st.session_state.choices = get_choices(next_word["sw"])
             st.rerun()
 
-    elif cur["type"] == "PROD":
-        st.subheader(f"【{cur['label']}】")
-        st.markdown(f"## 日本語訳: **`{word['ja']}`**")
-
-        with st.form(key=f"prod_form_{idx}"):
-            ans = st.text_input("対応するスワヒリ語を半角小文字で入力:")
-            submitted = st.form_submit_button("送信")
-
-            if submitted:
-                is_correct = (ans.strip().lower() == word["en"].lower())
-                st.session_state.last_ans = ans
-                st.session_state.last_correct = is_correct
-
-                st.session_state.logs.append({
-                    "trial_num": idx + 1,
-                    "cycle": cur["cycle"],
-                    "word_id": word["id"],
-                    "word_en": word["en"],
-                    "word_ja": word["ja"],
-                    "label": cur["label"],
-                    "user_input": ans,
-                    "is_correct": is_correct
-                })
-                st.session_state.phase = "FEEDBACK"
-                st.rerun()
-
-# --- ステップ2: フィードバック (2秒) ---
-elif st.session_state.phase == "FEEDBACK":
-    idx = st.session_state.trial_idx
-    total = len(st.session_state.schedule)
-    cur = st.session_state.schedule[idx]
-    word = WORD_DICT[cur["id"]]
-
-    st.subheader("【正解の確認】")
-    if st.session_state.last_correct:
-        st.success(f"⭕ 正解！ スワヒリ語: **`{word['en']}`**")
-    else:
-        st.error(f"❌ 不正解... 正解は **`{word['en']}`** でした")
-    st.info(f"日本語訳: **`{word['ja']}`** ｜ あなたの入力: **`{st.session_state.last_ans}`**")
-
-    bar = st.progress(1.0)
-    for i in range(20, 0, -1):
-        time.sleep(0.1)
-        bar.progress(i / 20.0)
-
-    if idx + 1 < total:
-        st.session_state.trial_idx += 1
-        st.session_state.phase = "RUN_TRIAL"
-        st.rerun()
-    else:
-        st.session_state.phase = "FINISHED"
-        st.rerun()
-
-# --- ステップ3: 完了 ＆ 自動保存 ---
-elif st.session_state.phase == "FINISHED":
+# ==========================================
+# 画面3: 学習完了
+# ==========================================
+elif st.session_state.step == "finished":
     st.balloons()
-    st.success("すべての学習セッションが完了しました！お疲れ様でした。")
-
-    total_cor = sum(1 for log in st.session_state.logs if log.get("is_correct"))
-    score_summary = f"総正解数: {total_cor} / 80試行"
-
-    if "submitted" not in st.session_state:
-        payload = {
-            "participant": str(st.session_state.user_name),
-            "group": str(st.session_state.group),
-            "summary": score_summary,
-            "raw_data": json.dumps(st.session_state.logs, ensure_ascii=False)
-        }
-        try:
-            requests.post(GAS_URL, json=payload, timeout=10)
-            st.session_state.submitted = True
-        except Exception:
-            st.session_state.submitted = False
-
-    st.markdown(f"### あなたの学習スコア:\n**{score_summary}**")
-    st.info("✅ データは自動でスプレッドシートに保存されました。そのまま直後テスト用フォームに進んでください。")
+    st.title("🎉 学習セッションが完了しました！")
+    st.success("お疲れ様でした！すべての単語学習が終了しました。")
+    st.info("画面を閉じ、実験者の指示に従ってください。")
