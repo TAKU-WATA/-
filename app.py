@@ -100,11 +100,11 @@ if st.session_state.step == "login":
             st.session_state.current_index = 0
             st.session_state.cycle = 1
             st.session_state.block = 1
-            st.session_state.choices = get_choices(WORDS[0]["sw"])
+            st.session_state.choices = get_choices(WORDS["sw"])
             st.rerun()
 
 # ==========================================
-# 画面2: 学習セッション (初回4秒提示 ➔ 4択復習)
+# 画面2: 学習セッション (初回4秒バー提示 ➔ 4択復習)
 # ==========================================
 elif st.session_state.step == "study":
     # グループごとのリスト管理（全習：12語全一括 / 分習：4語×3ブロック）
@@ -123,26 +123,28 @@ elif st.session_state.step == "study":
     idx = st.session_state.current_index
     word_obj = current_words[idx]
 
-    # プログレスバー表示
+    # 進捗ステータス表示
     st.caption(f"グループ: {st.session_state.group.upper()} | ブロック {st.session_state.block}/3 | サイクル {st.session_state.cycle}/5")
-    progress_val = ((st.session_state.cycle - 1) * total_in_block + idx) / (5 * total_in_block)
-    st.progress(min(progress_val, 1.0))
 
     st.markdown("---")
 
     # --------------------------------------------------
-    # 【サイクル 1】：初回提示（4秒間の自動表示）
+    # 【サイクル 1】：初回提示（4秒間のバータイマー自動表示）
     # --------------------------------------------------
     if st.session_state.cycle == 1:
-        st.info("💡 【初回提示】単語ペアが4秒間表示されます。しっかり覚えてください（自動で切り替わります）。")
+        st.info("💡 【初回提示】単語ペアをしっかり覚えてください（4秒後に自動で切り替わります）。")
         
         st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
         st.markdown(f"### スワヒリ語: **【 {word_obj['sw']} 】**")
         st.write("")
 
-        # 4秒間だけ画面を表示して自動で次へ遷移
-        time.sleep(4)
+        # 4秒間のカウントダウンプログレスバー
+        progress_bar = st.progress(1.0)
+        for t in range(40, 0, -1):
+            time.sleep(0.1)
+            progress_bar.progress(t / 40.0)
 
+        # 4秒経過後に自動遷移
         if idx + 1 < total_in_block:
             st.session_state.current_index += 1
         else:
