@@ -100,7 +100,8 @@ if st.session_state.step == "login":
             st.session_state.current_index = 0
             st.session_state.cycle = 1
             st.session_state.block = 1
-            st.session_state.choices = get_choices(WORDS["sw"])
+            # エラー修正箇所：WORDS[0]["sw"] に修正
+            st.session_state.choices = get_choices(WORDS[0]["sw"])
             st.rerun()
 
 # ==========================================
@@ -151,6 +152,7 @@ elif st.session_state.step == "study":
             # サイクル1完了 ➔ サイクル2（4択テスト）へ移行
             st.session_state.current_index = 0
             st.session_state.cycle += 1
+            # エラー修正箇所：current_words[0]["sw"] に修正
             next_word = current_words[0]
             st.session_state.choices = get_choices(next_word["sw"])
         st.rerun()
@@ -202,7 +204,17 @@ elif st.session_state.step == "study":
                 
                 # 次の問題用の選択肢を用意してリロード
                 if st.session_state.step == "study":
-                    next_word = current_words[st.session_state.current_index]
+                    if st.session_state.group != "whole":
+                        b = st.session_state.block
+                        if b == 1:
+                            next_words = WORDS[0:4]
+                        elif b == 2:
+                            next_words = WORDS[4:8]
+                        else:
+                            next_words = WORDS[8:12]
+                    else:
+                        next_words = WORDS
+                    next_word = next_words[st.session_state.current_index]
                     st.session_state.choices = get_choices(next_word["sw"])
                 st.rerun()
 
