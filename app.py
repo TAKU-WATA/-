@@ -43,7 +43,7 @@ def get_choices(correct_sw):
 # セッション状態の初期化
 # ==========================================
 if "step" not in st.session_state:
-    st.session_state.step = "login"  # login -> ready -> study -> finished
+    st.session_state.step = "login"  # login -> study -> finished
 if "student_id" not in st.session_state:
     st.session_state.student_id = ""
 if "group" not in st.session_state:
@@ -92,35 +92,18 @@ if st.session_state.step == "login":
     )
     st.session_state.group = selected_group_key
 
-    if st.button("次へ進む ➔", type="primary"):
+    if st.button("学習を開始する", type="primary"):
         if not st.session_state.student_id.strip():
             st.warning("学籍番号またはお名前を入力してください。")
         else:
-            st.session_state.step = "ready"
+            st.session_state.step = "study"
+            st.session_state.current_index = 0
+            st.session_state.cycle = 1
+            st.session_state.block = 1
             st.rerun()
 
 # ==========================================
-# 画面2: 準備画面（注意事項とスタートボタン）
-# ==========================================
-elif st.session_state.step == "ready":
-    st.title("💡 学習開始の準備")
-    st.info("""
-    **【学習の進め方】**
-    1. 最初に、単語ペアが**4秒間ずつ自動で表示**されます（初回提示）。しっかり覚えてください。
-    2. その後、日本語に対応するスワヒリ語を答える**4択テスト（4サイクル）**を行います。
-    
-    準備ができたら、下のボタンを押して学習を開始してください。
-    """)
-
-    if st.button("準備完了（単語学習を開始） ➔", type="primary", use_container_width=True):
-        st.session_state.step = "study"
-        st.session_state.current_index = 0
-        st.session_state.cycle = 1
-        st.session_state.block = 1
-        st.rerun()
-
-# ==========================================
-# 画面3: 学習セッション (初回4秒バー提示 ➔ 4択復習)
+# 画面2: 学習セッション (初回4秒バー提示 ➔ 4択復習)
 # ==========================================
 elif st.session_state.step == "study":
     # グループごとのリスト管理（全習：12語全一括 / 分習：4語×3ブロック）
@@ -145,7 +128,7 @@ elif st.session_state.step == "study":
     st.markdown("---")
 
     # --------------------------------------------------
-    # 【サイクル 1】：初回提示（4秒間のバータイマー自動表示）
+    # 【サイクル 1】：初回提示（ボタンなし・4秒バーで全自動切り替え）
     # --------------------------------------------------
     if st.session_state.cycle == 1:
         st.info("💡 【初回提示】単語ペアをしっかり覚えてください（4秒後に自動で切り替わります）。")
@@ -166,9 +149,9 @@ elif st.session_state.step == "study":
         else:
             # サイクル1完了 ➔ サイクル2（4択テスト）へ移行
             st.session_state.current_index = 0
-            st.session_state.cycle += 1
-            next_word = current_words[0]
-            st.session_state.choices = get_choices(next_word["sw"])
+            st.session_state.cycle = 2
+            first_word_in_cycle2 = current_words[0]
+            st.session_state.choices = get_choices(first_word_in_cycle2["sw"])
         st.rerun()
 
     # --------------------------------------------------
@@ -233,7 +216,7 @@ elif st.session_state.step == "study":
                 st.rerun()
 
 # ==========================================
-# 画面4: 学習完了
+# 画面3: 学習完了
 # ==========================================
 elif st.session_state.step == "finished":
     st.balloons()
