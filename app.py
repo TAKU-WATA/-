@@ -39,6 +39,18 @@ def get_choices(correct_sw):
     random.shuffle(choices)
     return choices
 
+# グループとブロックに応じた現在の単語リストを取得
+def get_current_words(group, block):
+    if group == "whole":
+        return WORDS
+    else:
+        if block == 1:
+            return WORDS[0:4]
+        elif block == 2:
+            return WORDS[4:8]
+        else:
+            return WORDS[8:12]
+
 # ==========================================
 # セッション状態の初期化
 # ==========================================
@@ -56,8 +68,6 @@ if "block" not in st.session_state:
     st.session_state.block = 1
 if "choices" not in st.session_state:
     st.session_state.choices = []
-if "feedback" not in st.session_state:
-    st.session_state.feedback = None
 
 # URLクエリパラメータからグループを判別
 query_params = st.query_params
@@ -73,7 +83,6 @@ if st.session_state.step == "login":
     st.subheader("基本情報の入力")
     st.session_state.student_id = st.text_input("学籍番号 または お名前", value=st.session_state.student_id)
 
-    # URL引数があれば自動選択、無ければ手動選択
     group_options = {
         "whole": "全習群 (Whole)",
         "part_long": "分習・長間隔群 (Part-Long)",
@@ -103,32 +112,20 @@ if st.session_state.step == "login":
             st.rerun()
 
 # ==========================================
-# 画面2: 学習セッション (初回4秒バー提示 ➔ 4択復習)
+# 画面2: 学習セッション
 # ==========================================
 elif st.session_state.step == "study":
-    # グループごとのリスト管理（全習：12語全一括 / 分習：4語×3ブロック）
-    if st.session_state.group == "whole":
-        current_words = WORDS
-    else:  # part_long or control
-        b = st.session_state.block
-        if b == 1:
-            current_words = WORDS[0:4]
-        elif b == 2:
-            current_words = WORDS[4:8]
-        else:
-            current_words = WORDS[8:12]
-
+    current_words = get_current_words(st.session_state.group, st.session_state.block)
     total_in_block = len(current_words)
     idx = st.session_state.current_index
     word_obj = current_words[idx]
 
     # 進捗ステータス表示
     st.caption(f"グループ: {st.session_state.group.upper()} | ブロック {st.session_state.block}/3 | サイクル {st.session_state.cycle}/5")
-
     st.markdown("---")
 
     # --------------------------------------------------
-    # 【サイクル 1】：初回提示（ボタンなし・4秒バーで全自動切り替え）
+    # 【サイクル 1】：初回提示（ボタン一切なし・4秒バーで全自動切り替え）
     # --------------------------------------------------
     if st.session_state.cycle == 1:
         st.info("💡 【初回提示】単語ペアをしっかり覚えてください（4秒後に自動で切り替わります）。")
@@ -137,7 +134,7 @@ elif st.session_state.step == "study":
         st.markdown(f"### スワヒリ語: **【 {word_obj['sw']} 】**")
         st.write("")
 
-        # 4秒間のカウントダウンプログレスバー
+        # 4秒間のカウントダウンプログレスバー（ボタンは画面上に存在しないためリセット不可）
         progress_bar = st.progress(1.0)
         for t in range(40, 0, -1):
             time.sleep(0.1)
@@ -150,70 +147,60 @@ elif st.session_state.step == "study":
             # サイクル1完了 ➔ サイクル2（4択テスト）へ移行
             st.session_state.current_index = 0
             st.session_state.cycle = 2
-            first_word_in_cycle2 = current_words[0]
-            st.session_state.choices = get_choices(first_word_in_cycle2["sw"])
+            st.session_state.choices = get_choices(current_words[0]["sw"])
         st.rerun()
 
     # --------------------------------------------------
-    # 【サイクル 2〜5】：4択復習テストフェーズ
+    # 【サイクル 2〜5】：4択テスト（4つの選択肢ボタン）
     # --------------------------------------------------
     else:
         st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
         st.write("対応するスワヒリ語を以下から1つ選んでください：")
 
-        # 4択ボタンの配置
+        # 選択肢が未初期化の場合の安全策
+        if not st.session_state.choices:
+            st.session_state.choices = get_choices(word_obj["sw"])
+
+        clicked_choice = None
         cols = st.columns(2)
         for i, choice in enumerate(st.session_state.choices):
             col = cols[i % 2]
             if col.button(f"**{choice}**", key=f"choice_{i}", use_container_width=True):
-                if choice == word_obj["sw"]:
-                    st.session_state.feedback = ("correct", f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
-                else:
-                    st.session_state.feedback = ("incorrect", f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
+                clicked_choice = choice
 
-        # フィードバック表示と次への遷移
-        if st.session_state.feedback is not None:
-            status, msg = st.session_state.feedback
-            if status == "correct":
-                st.success(msg)
+        # 4択ボタンが押されたら、正誤を表示して1.2秒後に自動で次へ
+        if clicked_choice is not None:
+            if clicked_choice == word_obj["sw"]:
+                st.success(f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
             else:
-                st.error(msg)
+                st.error(f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
+            
+            # 正誤フィードバックを1.2秒間表示
+            time.sleep(1.2)
 
-            if st.button("次の問題へ ➔", type="primary"):
-                st.session_state.feedback = None
-                
-                # 次の単語・サイクルの更新ロジック
-                if idx + 1 < total_in_block:
-                    st.session_state.current_index += 1
+            # 次の単語・サイクルの更新ロジック
+            if idx + 1 < total_in_block:
+                st.session_state.current_index += 1
+            else:
+                # ブロック内が一巡完了
+                st.session_state.current_index = 0
+                if st.session_state.cycle < 5:
+                    st.session_state.cycle += 1
                 else:
-                    # ブロック内の単語が一巡完了
-                    st.session_state.current_index = 0
-                    if st.session_state.cycle < 5:
-                        st.session_state.cycle += 1
+                    # 5サイクル完了 ➔ 次のブロックまたは終了へ
+                    st.session_state.cycle = 1
+                    if st.session_state.group != "whole" and st.session_state.block < 3:
+                        st.session_state.block += 1
                     else:
-                        # 5サイクル完了
-                        st.session_state.cycle = 1
-                        if st.session_state.group != "whole" and st.session_state.block < 3:
-                            st.session_state.block += 1
-                        else:
-                            # 全学習セッション終了
-                            st.session_state.step = "finished"
-                
-                # 次の問題用の選択肢を用意してリロード
-                if st.session_state.step == "study":
-                    if st.session_state.group != "whole":
-                        b = st.session_state.block
-                        if b == 1:
-                            next_words = WORDS[0:4]
-                        elif b == 2:
-                            next_words = WORDS[4:8]
-                        else:
-                            next_words = WORDS[8:12]
-                    else:
-                        next_words = WORDS
+                        st.session_state.step = "finished"
+
+            # 次の問題の4択選択肢を準備
+            if st.session_state.step == "study":
+                next_words = get_current_words(st.session_state.group, st.session_state.block)
+                if st.session_state.cycle >= 2:
                     next_word = next_words[st.session_state.current_index]
                     st.session_state.choices = get_choices(next_word["sw"])
-                st.rerun()
+            st.rerun()
 
 # ==========================================
 # 画面3: 学習完了
