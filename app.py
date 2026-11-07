@@ -74,14 +74,13 @@ query_params = st.query_params
 url_group = query_params.get("group", None)
 
 # ==========================================
-# 画面1: ログイン & グループ選択
+# 画面1: ログイン & グループ選択（ボタンなし・Enterキーでスタート）
 # ==========================================
 if st.session_state.step == "login":
     st.title("🔤 スワヒリ語 語彙学習セッション")
     st.write("画面の指示に従って、日本語に対応するスワヒリ語の意味を学習してください。")
 
     st.subheader("基本情報の入力")
-    st.session_state.student_id = st.text_input("学籍番号 または お名前", value=st.session_state.student_id)
 
     group_options = {
         "whole": "全習群 (Whole)",
@@ -101,15 +100,17 @@ if st.session_state.step == "login":
     )
     st.session_state.group = selected_group_key
 
-    if st.button("学習を開始する", type="primary"):
-        if not st.session_state.student_id.strip():
-            st.warning("学籍番号またはお名前を入力してください。")
-        else:
-            st.session_state.step = "study"
-            st.session_state.current_index = 0
-            st.session_state.cycle = 1
-            st.session_state.block = 1
-            st.rerun()
+    st.info("👇 **学籍番号またはお名前を入力し、Enterキーを押すと自動的に学習が始まります。**")
+    student_input = st.text_input("学籍番号 または お名前")
+
+    # 文字が入力されてEnterが押されたらボタンなしで即座にスタート
+    if student_input.strip():
+        st.session_state.student_id = student_input.strip()
+        st.session_state.step = "study"
+        st.session_state.current_index = 0
+        st.session_state.cycle = 1
+        st.session_state.block = 1
+        st.rerun()
 
 # ==========================================
 # 画面2: 学習セッション
@@ -125,7 +126,7 @@ elif st.session_state.step == "study":
     st.markdown("---")
 
     # --------------------------------------------------
-    # 【サイクル 1】：初回提示（ボタン一切なし・4秒バーで全自動切り替え）
+    # 【サイクル 1】：初回提示（ボタン完全なし・4秒バーで自動切替）
     # --------------------------------------------------
     if st.session_state.cycle == 1:
         st.info("💡 【初回提示】単語ペアをしっかり覚えてください（4秒後に自動で切り替わります）。")
@@ -134,7 +135,7 @@ elif st.session_state.step == "study":
         st.markdown(f"### スワヒリ語: **【 {word_obj['sw']} 】**")
         st.write("")
 
-        # 4秒間のカウントダウンプログレスバー（ボタンは画面上に存在しないためリセット不可）
+        # 4秒間のカウントダウンプログレスバー
         progress_bar = st.progress(1.0)
         for t in range(40, 0, -1):
             time.sleep(0.1)
@@ -151,13 +152,12 @@ elif st.session_state.step == "study":
         st.rerun()
 
     # --------------------------------------------------
-    # 【サイクル 2〜5】：4択テスト（4つの選択肢ボタン）
+    # 【サイクル 2〜5】：4択復習テスト（選択肢4つのみ・自動遷移）
     # --------------------------------------------------
     else:
         st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
         st.write("対応するスワヒリ語を以下から1つ選んでください：")
 
-        # 選択肢が未初期化の場合の安全策
         if not st.session_state.choices:
             st.session_state.choices = get_choices(word_obj["sw"])
 
@@ -168,26 +168,23 @@ elif st.session_state.step == "study":
             if col.button(f"**{choice}**", key=f"choice_{i}", use_container_width=True):
                 clicked_choice = choice
 
-        # 4択ボタンが押されたら、正誤を表示して1.2秒後に自動で次へ
+        # 選択肢が押されたら正誤判定を表示して1.2秒後に自動遷移
         if clicked_choice is not None:
             if clicked_choice == word_obj["sw"]:
                 st.success(f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
             else:
                 st.error(f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
             
-            # 正誤フィードバックを1.2秒間表示
             time.sleep(1.2)
 
             # 次の単語・サイクルの更新ロジック
             if idx + 1 < total_in_block:
                 st.session_state.current_index += 1
             else:
-                # ブロック内が一巡完了
                 st.session_state.current_index = 0
                 if st.session_state.cycle < 5:
                     st.session_state.cycle += 1
                 else:
-                    # 5サイクル完了 ➔ 次のブロックまたは終了へ
                     st.session_state.cycle = 1
                     if st.session_state.group != "whole" and st.session_state.block < 3:
                         st.session_state.block += 1
