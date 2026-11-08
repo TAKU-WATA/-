@@ -71,9 +71,16 @@ if "block" not in st.session_state:
 if "choices" not in st.session_state:
     st.session_state.choices = []
 
-# URLクエリパラメータからグループを判別
-query_params = st.query_params
-url_group = query_params.get("group", None)
+# URLクエリパラメータからグループを判別（安全処理追加）
+url_group = None
+try:
+    if "group" in st.query_params:
+        param_val = st.query_params["group"]
+        if isinstance(param_val, list):
+            param_val = param_val[0]
+        url_group = str(param_val).strip()
+except Exception:
+    pass
 
 # ==========================================
 # 画面1: ログイン & グループ選択
@@ -90,17 +97,20 @@ if st.session_state.step == "login":
         "control": "分習・短間隔群 (Control)"
     }
     
-    default_index = 0
-    if url_group in group_options:
-        default_index = list(group_options.keys()).index(url_group)
+    is_locked = url_group in group_options
+    default_index = list(group_options.keys()).index(url_group) if is_locked else 0
 
     selected_group_key = st.selectbox(
         "参加グループを選んでください",
         options=list(group_options.keys()),
         format_func=lambda x: group_options[x],
-        index=default_index
+        index=default_index,
+        disabled=is_locked  # URL指定時は選択不可（ロック）
     )
     st.session_state.group = selected_group_key
+
+    if is_locked:
+        st.caption("🔒 **URLにより学習グループが自動指定されています（変更不可）。**")
 
     student_input = st.text_input("学籍番号 または お名前", value=st.session_state.student_id)
 
