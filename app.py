@@ -6,26 +6,28 @@ import time
 # ページ基本設定
 # ==========================================
 st.set_page_config(
-    page_title="語彙学習実験アプリ（スワヒリ語・12語4択版）",
+    page_title="語彙学習実験アプリ（スワヒリ語・14語4択版）",
     page_icon="🔤",
     layout="centered"
 )
 
 # ==========================================
-# 単語データ（ターゲット10語 ＋ ダミー2語 ＝ 計12語）
+# 単語データ（ターゲット12語 ＋ ダミー2語 ＝ 計14語）
 # ==========================================
 WORDS = [
     {"ja": "心", "sw": "moyo", "is_buffer": True},       # 初頭バッファー語
-    {"ja": "敵", "sw": "adui", "is_buffer": False},      # ターゲット語 1
-    {"ja": "馬", "sw": "farasi", "is_buffer": False},    # ターゲット語 2
-    {"ja": "湖", "sw": "ziwa", "is_buffer": False},      # ターゲット語 3
-    {"ja": "鳥", "sw": "ndege", "is_buffer": False},     # ターゲット語 4
-    {"ja": "ライオン", "sw": "simba", "is_buffer": False},# ターゲット語 5
-    {"ja": "魚", "sw": "samaki", "is_buffer": False},   # ターゲット語 6
-    {"ja": "家", "sw": "nyumba", "is_buffer": False},   # ターゲット語 7
-    {"ja": "火", "sw": "moto", "is_buffer": False},     # ターゲット語 8
-    {"ja": "本", "sw": "kitabu", "is_buffer": False},   # ターゲット語 9
-    {"ja": "机", "sw": "meza", "is_buffer": False},     # ターゲット語 10
+    {"ja": "敵", "sw": "adui", "is_buffer": False},      # ターゲット語 1 (ブロック1)
+    {"ja": "馬", "sw": "farasi", "is_buffer": False},    # ターゲット語 2 (ブロック1)
+    {"ja": "湖", "sw": "ziwa", "is_buffer": False},      # ターゲット語 3 (ブロック1)
+    {"ja": "鳥", "sw": "ndege", "is_buffer": False},     # ターゲット語 4 (ブロック1)
+    {"ja": "ライオン", "sw": "simba", "is_buffer": False},# ターゲット語 5 (ブロック2)
+    {"ja": "魚", "sw": "samaki", "is_buffer": False},   # ターゲット語 6 (ブロック2)
+    {"ja": "家", "sw": "nyumba", "is_buffer": False},   # ターゲット語 7 (ブロック2)
+    {"ja": "火", "sw": "moto", "is_buffer": False},     # ターゲット語 8 (ブロック2)
+    {"ja": "本", "sw": "kitabu", "is_buffer": False},   # ターゲット語 9 (ブロック3)
+    {"ja": "机", "sw": "meza", "is_buffer": False},     # ターゲット語 10 (ブロック3)
+    {"ja": "ナイフ", "sw": "kisu", "is_buffer": False},   # ターゲット語 11 (ブロック3)
+    {"ja": "塩", "sw": "chumvi", "is_buffer": False},   # ターゲット語 12 (ブロック3)
     {"ja": "頭", "sw": "kichwa", "is_buffer": True}      # 終末バッファー語
 ]
 
@@ -45,11 +47,11 @@ def get_current_words(group, block):
         return WORDS
     else:
         if block == 1:
-            return WORDS[0:4]
+            return WORDS[0:5]    # バッファー1 + ターゲット1〜4 (計5語)
         elif block == 2:
-            return WORDS[4:8]
+            return WORDS[5:9]    # ターゲット5〜8 (計4語)
         else:
-            return WORDS[8:12]
+            return WORDS[9:14]   # ターゲット9〜12 + バッファー1 (計5語)
 
 # ==========================================
 # セッション状態の初期化
@@ -130,7 +132,7 @@ elif st.session_state.step == "study":
     st.markdown("---")
 
     # --------------------------------------------------
-    # 【サイクル 1】：初回提示（ボタン一切なし・4秒バーで全自動切り替え）
+    # 【サイクル 1】：初回提示（ボタンなし・4秒バー自動切り替え）
     # --------------------------------------------------
     if st.session_state.cycle == 1:
         st.info("💡 【初回提示】単語ペアをしっかり覚えてください（4秒後に自動で切り替わります）。")
@@ -139,7 +141,7 @@ elif st.session_state.step == "study":
         st.markdown(f"### スワヒリ語: **【 {word_obj['sw']} 】**")
         st.write("")
 
-        # 4秒間のカウントダウンプログレスバー（画面上にボタン類なし）
+        # 4秒間のカウントダウンプログレスバー（ボタンなし）
         progress_bar = st.progress(1.0)
         for t in range(40, 0, -1):
             time.sleep(0.1)
@@ -157,13 +159,12 @@ elif st.session_state.step == "study":
         st.rerun()
 
     # --------------------------------------------------
-    # 【サイクル 2〜5】：4択復習テスト（選択肢4つのみ・即判定自動遷移）
+    # 【サイクル 2〜5】：4択復習テスト（選択即・自動遷移）
     # --------------------------------------------------
     else:
         st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
         st.write("対応するスワヒリ語を以下から1つ選んでください：")
 
-        # 選択肢が未初期化の場合の保護
         if not st.session_state.choices:
             st.session_state.choices = get_choices(word_obj["sw"])
 
@@ -174,7 +175,7 @@ elif st.session_state.step == "study":
             if col.button(f"**{choice}**", key=f"choice_{i}", use_container_width=True):
                 clicked_choice = choice
 
-        # 選択肢ボタンが押されたら正誤判定を表示して1.2秒後に自動遷移
+        # 選択肢が押されたら正誤判定を表示して1.2秒後に自動遷移
         if clicked_choice is not None:
             if clicked_choice == word_obj["sw"]:
                 st.success(f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
