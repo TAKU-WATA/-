@@ -114,6 +114,8 @@ if "cycle" not in st.session_state:
     st.session_state.cycle = 1
 if "block" not in st.session_state:
     st.session_state.block = 1
+if "word_order" not in st.session_state:
+    st.session_state.word_order = []
 if "choices" not in st.session_state:
     st.session_state.choices = []
 if "score" not in st.session_state:
@@ -183,6 +185,7 @@ if st.session_state.step == "login":
             st.session_state.current_index = 0
             st.session_state.cycle = 1
             st.session_state.block = 1
+            st.session_state.word_order = []
             st.session_state.score = 0
             st.session_state.total_questions = 0
             st.session_state.cycle_scores = {
@@ -200,8 +203,19 @@ if st.session_state.step == "login":
 elif st.session_state.step == "study":
     current_words = get_current_words(st.session_state.group, st.session_state.block)
     total_in_block = len(current_words)
+    
+    # 提示順の初期化・更新（サイクル1は固定、サイクル2〜5はランダムシャッフル）
+    if not st.session_state.word_order or len(st.session_state.word_order) != total_in_block:
+        if st.session_state.cycle == 1:
+            st.session_state.word_order = list(range(total_in_block))
+        else:
+            order = list(range(total_in_block))
+            random.shuffle(order)
+            st.session_state.word_order = order
+
     idx = st.session_state.current_index
-    word_obj = current_words[idx]
+    actual_idx = st.session_state.word_order[idx]
+    word_obj = current_words[actual_idx]
 
     # 進捗ステータス表示
     total_blocks = 1 if st.session_state.group == "whole" else 3
@@ -226,10 +240,15 @@ elif st.session_state.step == "study":
         if idx + 1 < total_in_block:
             st.session_state.current_index += 1
         else:
+            # サイクル1完了 ➔ サイクル2（4択復習テスト）へ移行し、順番をシャッフル
             st.session_state.current_index = 0
             st.session_state.cycle = 2
-            first_word_c2 = current_words
-            st.session_state.choices = get_choices(first_word_c2["sw"])
+            order = list(range(total_in_block))
+            random.shuffle(order)
+            st.session_state.word_order = order
+            
+            first_word = current_words[order[0]]
+            st.session_state.choices = get_choices(first_word["sw"])
         st.rerun()
 
     # --------------------------------------------------
@@ -265,21 +284,29 @@ elif st.session_state.step == "study":
 
             if idx + 1 < total_in_block:
                 st.session_state.current_index += 1
+                next_actual_idx = st.session_state.word_order[st.session_state.current_index]
+                next_word = current_words[next_actual_idx]
+                st.session_state.choices = get_choices(next_word["sw"])
             else:
                 st.session_state.current_index = 0
                 if st.session_state.cycle < 5:
                     st.session_state.cycle += 1
+                    # 次のサイクルの出題順をランダムシャッフル
+                    order = list(range(total_in_block))
+                    random.shuffle(order)
+                    st.session_state.word_order = order
+                    
+                    first_word = current_words[order[0]]
+                    st.session_state.choices = get_choices(first_word["sw"])
                 else:
                     st.session_state.cycle = 1
                     if st.session_state.group != "whole" and st.session_state.block < 3:
                         st.session_state.block += 1
+                        next_words = get_current_words(st.session_state.group, st.session_state.block)
+                        st.session_state.word_order = list(range(len(next_words)))
                     else:
                         st.session_state.step = "finished"
 
-            if st.session_state.step == "study":
-                next_words = get_current_words(st.session_state.group, st.session_state.block)
-                next_word = next_words[st.session_state.current_index]
-                st.session_state.choices = get_choices(next_word["sw"])
             st.rerun()
 
 # ==========================================
