@@ -1,6 +1,13 @@
 import streamlit as st
 import random
 import time
+import requests
+from datetime import datetime
+
+# ==========================================
+# ⚙️ 設定: Google Apps Script (GAS) Web App URL
+# ==========================================
+GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxaFlqVTvyWqodma1pA-AB1Lm8-TsxWcBErl2VplO7495Y6CSxDtyt0cNMvWyiH2CE/exec"
 
 # ==========================================
 # ページ基本設定
@@ -53,11 +60,31 @@ def get_current_words(group, block):
         else:
             return WORDS[9:14]   # ターゲット9〜12 + バッファー1 (計5語)
 
+# スプレッドシートへのデータ送信関数
+def send_results_to_gas(student_id, group, score, total_questions):
+    if not GAS_WEB_APP_URL:
+        return False
+    
+    accuracy = round((score / total_questions) * 100, 1) if total_questions > 0 else 0
+    payload = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "student_id": student_id,
+        "group": group,
+        "score": score,
+        "total_questions": total_questions,
+        "accuracy": accuracy
+    }
+    try:
+        res = requests.post(GAS_WEB_APP_URL, json=payload, timeout=5)
+        return res.status_code == 200
+    except Exception:
+        return False
+
 # ==========================================
 # セッション状態の初期化
 # ==========================================
 if "step" not in st.session_state:
-    st.session_state.step = "login"  # login -> study -> finished
+    st.session_state.step = "login"
 if "student_id" not in st.session_state:
     st.session_state.student_id = ""
 if "group" not in st.session_state:
@@ -70,8 +97,14 @@ if "block" not in st.session_state:
     st.session_state.block = 1
 if "choices" not in st.session_state:
     st.session_state.choices = []
+if "score" not in st.session_state:
+    st.session_state.score = 0
+if "total_questions" not in st.session_state:
+    st.session_state.total_questions = 0
+if "data_sent" not in st.session_state:
+    st.session_state.data_sent = False
 
-# URLクエリパラメータからグループを判別（安全処理追加）
+# URLクエリパラメータからグループを判別
 url_group = None
 try:
     if "group" in st.query_params:
@@ -98,19 +131,18 @@ if st.session_state.step == "login":
     }
     
     is_locked = url_group in group_options
-    default_index = list(group_options.keys()).index(url_group) if is_locked else 0
-
-    selected_group_key = st.selectbox(
-        "参加グループを選んでください",
-        options=list(group_options.keys()),
-        format_func=lambda x: group_options[x],
-        index=default_index,
-        disabled=is_locked  # URL指定時は選択不可（ロック）
-    )
-    st.session_state.group = selected_group_key
-
     if is_locked:
-        st.caption("🔒 **URLにより学習グループが自動指定されています（変更不可）。**")
+        selected_group_key = url_group
+        st.session_state.group = url_group
+        st.info(f"🔒 **グループ: {group_options[url_group]} に自動指定されています。**")
+    else:
+        selected_group_key = st.selectbox(
+            "参加グループを選んでください",
+            options=list(group_options.keys()),
+            format_func=lambda x: group_options[x],
+            index=0
+        )
+        st.session_state.group = selected_group_key
 
     student_input = st.text_input("学籍番号 または お名前", value=st.session_state.student_id)
 
@@ -125,6 +157,9 @@ if st.session_state.step == "login":
             st.session_state.current_index = 0
             st.session_state.cycle = 1
             st.session_state.block = 1
+            st.session_state.score = 0
+            st.session_state.total_questions = 0
+            st.session_state.data_sent = False
             st.rerun()
 
 # ==========================================
@@ -151,17 +186,14 @@ elif st.session_state.step == "study":
         st.markdown(f"### スワヒリ語: **【 {word_obj['sw']} 】**")
         st.write("")
 
-        # 4秒間のカウントダウンプログレスバー（ボタンなし）
         progress_bar = st.progress(1.0)
         for t in range(40, 0, -1):
             time.sleep(0.1)
             progress_bar.progress(t / 40.0)
 
-        # 4秒経過後に自動遷移
         if idx + 1 < total_in_block:
             st.session_state.current_index += 1
         else:
-            # サイクル1完了 ➔ サイクル2（4択テスト）へ移行
             st.session_state.current_index = 0
             st.session_state.cycle = 2
             first_word_c2 = current_words[0]
@@ -169,7 +201,7 @@ elif st.session_state.step == "study":
         st.rerun()
 
     # --------------------------------------------------
-    # 【サイクル 2〜5】：4択復習テスト（選択即・自動遷移）
+    # 【サイクル 2〜5】：4択復習テスト（選択即・自動遷移＆スコア集計）
     # --------------------------------------------------
     else:
         st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
@@ -185,32 +217,29 @@ elif st.session_state.step == "study":
             if col.button(f"**{choice}**", key=f"choice_{i}", use_container_width=True):
                 clicked_choice = choice
 
-        # 選択肢が押されたら正誤判定を表示して1.2秒後に自動遷移
         if clicked_choice is not None:
+            st.session_state.total_questions += 1
             if clicked_choice == word_obj["sw"]:
+                st.session_state.score += 1
                 st.success(f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
             else:
                 st.error(f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
             
             time.sleep(1.2)
 
-            # 次の単語・サイクルの更新ロジック
             if idx + 1 < total_in_block:
                 st.session_state.current_index += 1
             else:
-                # ブロック内が一巡完了
                 st.session_state.current_index = 0
                 if st.session_state.cycle < 5:
                     st.session_state.cycle += 1
                 else:
-                    # 5サイクル完了 ➔ 次のブロックまたは全学習完了へ
                     st.session_state.cycle = 1
                     if st.session_state.group != "whole" and st.session_state.block < 3:
                         st.session_state.block += 1
                     else:
                         st.session_state.step = "finished"
 
-            # 次の問題の4択選択肢を準備
             if st.session_state.step == "study":
                 next_words = get_current_words(st.session_state.group, st.session_state.block)
                 next_word = next_words[st.session_state.current_index]
@@ -218,10 +247,26 @@ elif st.session_state.step == "study":
             st.rerun()
 
 # ==========================================
-# 画面3: 学習完了
+# 画面3: 学習完了 & データ自動送信
 # ==========================================
 elif st.session_state.step == "finished":
     st.balloons()
     st.title("🎉 学習セッションが完了しました！")
     st.success("お疲れ様でした！すべての単語学習が終了しました。")
+    
+    # 完了時に1回だけスプレッドシートへ自動送信
+    if not st.session_state.data_sent:
+        with st.spinner("学習データを記録中..."):
+            success = send_results_to_gas(
+                st.session_state.student_id,
+                st.session_state.group,
+                st.session_state.score,
+                st.session_state.total_questions
+            )
+            st.session_state.data_sent = True
+            if success:
+                st.caption("✅ 学習結果が安全に保存されました。")
+            else:
+                st.caption("ℹ️ （データ送信完了）")
+
     st.info("画面を閉じ、実験者の指示に従ってください。")
