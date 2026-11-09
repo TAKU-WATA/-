@@ -138,7 +138,7 @@ try:
     if "group" in st.query_params:
         param_val = st.query_params["group"]
         if isinstance(param_val, list):
-            param_val = param_val
+            param_val = param_val[0]
         url_group = str(param_val).strip()
 except Exception:
     pass
@@ -240,7 +240,6 @@ elif st.session_state.step == "study":
         if idx + 1 < total_in_block:
             st.session_state.current_index += 1
         else:
-            # サイクル1完了 ➔ サイクル2（4択復習テスト）へ移行し、順番をシャッフル
             st.session_state.current_index = 0
             st.session_state.cycle = 2
             order = list(range(total_in_block))
@@ -291,7 +290,6 @@ elif st.session_state.step == "study":
                 st.session_state.current_index = 0
                 if st.session_state.cycle < 5:
                     st.session_state.cycle += 1
-                    # 次のサイクルの出題順をランダムシャッフル
                     order = list(range(total_in_block))
                     random.shuffle(order)
                     st.session_state.word_order = order
@@ -310,32 +308,17 @@ elif st.session_state.step == "study":
             st.rerun()
 
 # ==========================================
-# 画面3: 学習完了 & データ自動送信・詳細結果表示
+# 画面3: 学習完了 & データ自動送信
 # ==========================================
 elif st.session_state.step == "finished":
     st.balloons()
     st.title("🎉 学習セッションが完了しました！")
     st.success("お疲れ様でした！すべての単語学習が終了しました。")
     
-    # 詳細成績の表示
-    st.subheader("📊 あなたの学習結果")
-    tot = st.session_state.total_questions
-    sc = st.session_state.score
-    acc = round((sc / tot) * 100, 1) if tot > 0 else 0
-    st.write(f"**総合正答率:** {acc}% （{sc}問 / {tot}問）")
-
-    st.markdown("#### サイクル（回数）ごとの正答率")
-    cols = st.columns(4)
-    for i, c in enumerate([2, 3, 4, 5]):
-        c_sc = st.session_state.cycle_scores[c]["score"]
-        c_tot = st.session_state.cycle_scores[c]["total"]
-        c_acc = round((c_sc / c_tot) * 100, 1) if c_tot > 0 else 0
-        cols[i].metric(f"サイクル {c}", f"{c_acc}%", f"{c_sc}/{c_tot} 問")
-
-    # 完了時に1回だけスプレッドシートへ自動送信
+    # 完了時に1回だけスプレッドシートへ自動送信（裏側処理のみ）
     if not st.session_state.data_sent:
-        with st.spinner("学習データを記録中..."):
-            success = send_results_to_gas(
+        with st.spinner("学習データを送信中..."):
+            send_results_to_gas(
                 st.session_state.student_id,
                 st.session_state.group,
                 st.session_state.score,
@@ -343,9 +326,5 @@ elif st.session_state.step == "finished":
                 st.session_state.cycle_scores
             )
             st.session_state.data_sent = True
-            if success:
-                st.caption("✅ 詳細な学習結果が安全に保存されました。")
-            else:
-                st.caption("ℹ️ （データ送信完了）")
 
     st.info("画面を閉じ、実験者の指示に従ってください。")
