@@ -60,19 +60,38 @@ def get_current_words(group, block):
         else:
             return WORDS[9:14]   # ターゲット9〜12 + バッファー1 (計5語)
 
-# スプレッドシートへのデータ送信関数
-def send_results_to_gas(student_id, group, score, total_questions):
+# スプレッドシートへの詳細データ送信関数
+def send_results_to_gas(student_id, group, score, total_questions, cycle_scores):
     if not GAS_WEB_APP_URL:
         return False
     
     accuracy = round((score / total_questions) * 100, 1) if total_questions > 0 else 0
+    
+    def get_c_info(c):
+        sc = cycle_scores.get(c, {"score": 0, "total": 0})
+        acc = round((sc["score"] / sc["total"]) * 100, 1) if sc["total"] > 0 else 0
+        return f"{sc['score']}/{sc['total']}", acc
+
+    c2_str, c2_acc = get_c_info(2)
+    c3_str, c3_acc = get_c_info(3)
+    c4_str, c4_acc = get_c_info(4)
+    c5_str, c5_acc = get_c_info(5)
+
     payload = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "student_id": student_id,
         "group": group,
         "score": score,
         "total_questions": total_questions,
-        "accuracy": accuracy
+        "accuracy": accuracy,
+        "c2_score": c2_str,
+        "c2_acc": c2_acc,
+        "c3_score": c3_str,
+        "c3_acc": c3_acc,
+        "c4_score": c4_str,
+        "c4_acc": c4_acc,
+        "c5_score": c5_str,
+        "c5_acc": c5_acc,
     }
     try:
         res = requests.post(GAS_WEB_APP_URL, json=payload, timeout=5)
@@ -101,6 +120,13 @@ if "score" not in st.session_state:
     st.session_state.score = 0
 if "total_questions" not in st.session_state:
     st.session_state.total_questions = 0
+if "cycle_scores" not in st.session_state:
+    st.session_state.cycle_scores = {
+        2: {"score": 0, "total": 0},
+        3: {"score": 0, "total": 0},
+        4: {"score": 0, "total": 0},
+        5: {"score": 0, "total": 0}
+    }
 if "data_sent" not in st.session_state:
     st.session_state.data_sent = False
 
@@ -110,7 +136,7 @@ try:
     if "group" in st.query_params:
         param_val = st.query_params["group"]
         if isinstance(param_val, list):
-            param_val = param_val[0]
+            param_val = param_val
         url_group = str(param_val).strip()
 except Exception:
     pass
@@ -159,6 +185,12 @@ if st.session_state.step == "login":
             st.session_state.block = 1
             st.session_state.score = 0
             st.session_state.total_questions = 0
+            st.session_state.cycle_scores = {
+                2: {"score": 0, "total": 0},
+                3: {"score": 0, "total": 0},
+                4: {"score": 0, "total": 0},
+                5: {"score": 0, "total": 0}
+            }
             st.session_state.data_sent = False
             st.rerun()
 
@@ -196,12 +228,12 @@ elif st.session_state.step == "study":
         else:
             st.session_state.current_index = 0
             st.session_state.cycle = 2
-            first_word_c2 = current_words[0]
+            first_word_c2 = current_words
             st.session_state.choices = get_choices(first_word_c2["sw"])
         st.rerun()
 
     # --------------------------------------------------
-    # 【サイクル 2〜5】：4択復習テスト（選択即・自動遷移＆スコア集計）
+    # 【サイクル 2〜5】：4択復習テスト（選択即・自動遷移＆詳細スコア集計）
     # --------------------------------------------------
     else:
         st.markdown(f"### 日本語: **【 {word_obj['ja']} 】**")
@@ -218,9 +250,13 @@ elif st.session_state.step == "study":
                 clicked_choice = choice
 
         if clicked_choice is not None:
+            c = st.session_state.cycle
             st.session_state.total_questions += 1
+            st.session_state.cycle_scores[c]["total"] += 1
+
             if clicked_choice == word_obj["sw"]:
                 st.session_state.score += 1
+                st.session_state.cycle_scores[c]["score"] += 1
                 st.success(f"⭕ 正解！ 「{word_obj['ja']}」 = **{word_obj['sw']}**")
             else:
                 st.error(f"❌ 残念！ 正解は **{word_obj['sw']}** でした。")
@@ -247,13 +283,28 @@ elif st.session_state.step == "study":
             st.rerun()
 
 # ==========================================
-# 画面3: 学習完了 & データ自動送信
+# 画面3: 学習完了 & データ自動送信・詳細結果表示
 # ==========================================
 elif st.session_state.step == "finished":
     st.balloons()
     st.title("🎉 学習セッションが完了しました！")
     st.success("お疲れ様でした！すべての単語学習が終了しました。")
     
+    # 詳細成績の表示
+    st.subheader("📊 あなたの学習結果")
+    tot = st.session_state.total_questions
+    sc = st.session_state.score
+    acc = round((sc / tot) * 100, 1) if tot > 0 else 0
+    st.write(f"**総合正答率:** {acc}% （{sc}問 / {tot}問）")
+
+    st.markdown("#### サイクル（回数）ごとの正答率")
+    cols = st.columns(4)
+    for i, c in enumerate([2, 3, 4, 5]):
+        c_sc = st.session_state.cycle_scores[c]["score"]
+        c_tot = st.session_state.cycle_scores[c]["total"]
+        c_acc = round((c_sc / c_tot) * 100, 1) if c_tot > 0 else 0
+        cols[i].metric(f"サイクル {c}", f"{c_acc}%", f"{c_sc}/{c_tot} 問")
+
     # 完了時に1回だけスプレッドシートへ自動送信
     if not st.session_state.data_sent:
         with st.spinner("学習データを記録中..."):
@@ -261,11 +312,12 @@ elif st.session_state.step == "finished":
                 st.session_state.student_id,
                 st.session_state.group,
                 st.session_state.score,
-                st.session_state.total_questions
+                st.session_state.total_questions,
+                st.session_state.cycle_scores
             )
             st.session_state.data_sent = True
             if success:
-                st.caption("✅ 学習結果が安全に保存されました。")
+                st.caption("✅ 詳細な学習結果が安全に保存されました。")
             else:
                 st.caption("ℹ️ （データ送信完了）")
 
