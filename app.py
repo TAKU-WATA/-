@@ -61,7 +61,7 @@ def get_current_words(group, block):
             return WORDS[9:14]   # ターゲット9〜12 + バッファー1 (計5語)
 
 # スプレッドシートへの詳細データ送信関数
-def send_results_to_gas(student_id, group, score, total_questions, cycle_scores):
+def send_results_to_gas(student_id, student_name, group, score, total_questions, cycle_scores):
     if not GAS_WEB_APP_URL:
         return False
     
@@ -80,6 +80,7 @@ def send_results_to_gas(student_id, group, score, total_questions, cycle_scores)
     payload = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "student_id": student_id,
+        "student_name": student_name,
         "group": group,
         "score": score,
         "total_questions": total_questions,
@@ -106,6 +107,8 @@ if "step" not in st.session_state:
     st.session_state.step = "login"
 if "student_id" not in st.session_state:
     st.session_state.student_id = ""
+if "student_name" not in st.session_state:
+    st.session_state.student_name = ""
 if "group" not in st.session_state:
     st.session_state.group = ""
 if "current_index" not in st.session_state:
@@ -153,9 +156,9 @@ if st.session_state.step == "login":
     st.subheader("基本情報の入力")
 
     group_options = {
-        "whole": "全習群 (Whole)",
-        "part_long": "分習・長間隔群 (Part-Long)",
-        "control": "分習・短間隔群 (Control)"
+        "whole": "グループA（全習群 / Whole）",
+        "part_long": "グループB（分習・長間隔群 / Part-Long）",
+        "control": "グループC（分習・短間隔群・統制群 / Control）"
     }
     
     is_locked = url_group in group_options
@@ -172,15 +175,17 @@ if st.session_state.step == "login":
         )
         st.session_state.group = selected_group_key
 
-    student_input = st.text_input("学籍番号 または お名前", value=st.session_state.student_id)
+    student_id_input = st.text_input("学籍番号", value=st.session_state.student_id)
+    student_name_input = st.text_input("氏名", value=st.session_state.student_name)
 
     start_clicked = st.button("学習を開始する", type="primary")
 
-    if (start_clicked or (student_input and student_input != st.session_state.student_id)):
-        if not student_input.strip():
-            st.warning("学籍番号またはお名前を入力してください。")
+    if start_clicked:
+        if not student_id_input.strip() or not student_name_input.strip():
+            st.warning("学籍番号と氏名の両方を入力してください。")
         else:
-            st.session_state.student_id = student_input.strip()
+            st.session_state.student_id = student_id_input.strip()
+            st.session_state.student_name = student_name_input.strip()
             st.session_state.step = "study"
             st.session_state.current_index = 0
             st.session_state.cycle = 1
@@ -315,11 +320,11 @@ elif st.session_state.step == "finished":
     st.title("🎉 学習セッションが完了しました！")
     st.success("お疲れ様でした！すべての単語学習が終了しました。")
     
-    # 完了時に1回だけスプレッドシートへ自動送信（裏側処理のみ）
     if not st.session_state.data_sent:
         with st.spinner("学習データを送信中..."):
             send_results_to_gas(
                 st.session_state.student_id,
+                st.session_state.student_name,
                 st.session_state.group,
                 st.session_state.score,
                 st.session_state.total_questions,
